@@ -11,7 +11,7 @@ kally add tween \
 ```
 
 Kally locks the selected Git reference to an immutable commit in the consuming
-project's `kalcite.lock`. Consumers therefore build from the locked commit;
+project's `kally.lock`. Consumers therefore build from the locked commit;
 only `kally update` moves a dependency forward.
 
 ## Repository layout
