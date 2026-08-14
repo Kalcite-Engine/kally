@@ -1,0 +1,24 @@
+name: Package CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: Kalcite-Engine/kalcite
+          path: kalcite
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Validate package layout
+        env:
+          KALCITE_CLI_MANIFEST: kalcite/Cargo.toml
+        run: ./scripts/check-packages.sh
