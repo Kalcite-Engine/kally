@@ -1,4 +1,4 @@
-# Kalcite Packages
+# Kally
 
 Official Git package monorepo for Kalcite projects. Each directory under
 [`packages/`](packages) is independently consumable through Kally; the package
