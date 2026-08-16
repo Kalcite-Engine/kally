@@ -1,0 +1,16 @@
+[package]
+name = "kally"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "Git-first package manager for Kalcite"
+repository = "https://github.com/Kalcite-Engine/kally"
+readme = "README.md"
+keywords = ["kalcite", "package-manager", "git"]
+categories = ["command-line-utilities", "development-tools"]
+
+[build-dependencies]
+kalcite-syntax = { git = "https://github.com/Kalcite-Engine/kalcite.git", branch = "kally-package-manager" }
+kalcite-hir = { git = "https://github.com/Kalcite-Engine/kalcite.git", branch = "kally-package-manager" }
+kalcite-mir = { git = "https://github.com/Kalcite-Engine/kalcite.git", branch = "kally-package-manager" }
+kalcite-backend-rust = { git = "https://github.com/Kalcite-Engine/kalcite.git", branch = "kally-package-manager" }
