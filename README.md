@@ -28,6 +28,9 @@ kally sync
 
 `kally update tween` is the only command that advances a locked Git package.
 `kally sync` materializes the exact locked source under `.kally/packages/`.
+For CI and reproducible builds, use `kally sync --locked`: it rejects any
+manifest/lock divergence or missing checksum and never resolves a Git reference
+or rewrites `kally.lock`.
 `kally status` is read-only: it audits the manifest, lockfile, and local cache,
 returning a non-zero status when `sync` or an explicit `update` is required.
 

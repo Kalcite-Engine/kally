@@ -63,7 +63,16 @@ mod klc_runtime {
     }
 }
 
-#[allow(dead_code, unused_mut, unused_parens)]
+// KLC emits direct control-flow and byte comparisons; lint the handwritten
+// adapter normally, but do not require the generated Rust to imitate idioms
+// that KLC does not expose.
+#[allow(
+    dead_code,
+    unused_mut,
+    unused_parens,
+    clippy::manual_range_contains,
+    clippy::needless_return
+)]
 mod klc_core {
     include!(concat!(env!("OUT_DIR"), "/kally_core.rs"));
 }
