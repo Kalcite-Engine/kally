@@ -11,7 +11,7 @@ this repository.
 ## Install
 
 ```sh
-cargo install --git https://github.com/Kalcite-Engine/kally.git --branch manager-core
+cargo install --git https://github.com/Kalcite-Engine/kally.git
 ```
 
 ## Use
