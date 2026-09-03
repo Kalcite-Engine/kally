@@ -6,7 +6,7 @@ use std::{
 
 fn usage() {
     eprintln!(
-        "usage:\n  kally add NAME git:URL[#SUBDIR] [BRANCH_OR_TAG] [DIR]\n  kally update [NAME] [DIR]\n  kally sync [DIR]\n  kally remove NAME [DIR]\n  kally lock [DIR]\n\nKally manages Git packages for Kalcite projects. add resolves a branch or tag\nto an immutable commit in kally.lock; update is the only command that\nadvances a locked Git dependency."
+        "usage:\n  kally add NAME git:URL[#SUBDIR] [BRANCH_OR_TAG] [DIR]\n  kally update [NAME] [DIR]\n  kally sync [DIR]\n  kally status [DIR]\n  kally remove NAME [DIR]\n  kally lock [DIR]\n\nKally manages Git packages for Kalcite projects. add resolves a branch or tag\nto an immutable commit in kally.lock; update is the only command that\nadvances a locked Git dependency. status is read-only and audits the local cache."
     );
 }
 
@@ -20,6 +20,7 @@ fn main() -> ExitCode {
         "add" => kally_add_command(&args[2..]),
         "update" => kally_update_command(&args[2..]),
         "sync" => kally_sync_command(&args[2..]),
+        "status" => kally_status_command(&args[2..]),
         "remove" => kally_remove_command(&args[2..]),
         "lock" => kally_lock_command(&args[2..]),
         "help" | "--help" | "-h" => {
@@ -31,6 +32,115 @@ fn main() -> ExitCode {
             usage();
             ExitCode::FAILURE
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PackageStatus {
+    Ready,
+    Missing,
+    ChecksumMismatch,
+    Unresolved,
+    Diverged,
+    Stale,
+}
+
+impl PackageStatus {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Ready => "ready",
+            Self::Missing => "missing",
+            Self::ChecksumMismatch => "checksum-mismatch",
+            Self::Unresolved => "unresolved",
+            Self::Diverged => "diverged",
+            Self::Stale => "stale",
+        }
+    }
+
+    fn healthy(self) -> bool {
+        self == Self::Ready
+    }
+}
+
+fn kally_status_command(args: &[String]) -> ExitCode {
+    let root = match args {
+        [] => PathBuf::from("."),
+        [root] => PathBuf::from(root),
+        _ => {
+            eprintln!("usage: kally status [DIR]");
+            return ExitCode::FAILURE;
+        }
+    };
+    let manifest = match kally::load_manifest(&root.join("kally.toml")) {
+        Ok(manifest) => manifest,
+        Err(error) => {
+            eprintln!("{}: {error}", root.join("kally.toml").display());
+            return ExitCode::FAILURE;
+        }
+    };
+    let lock = match kally::load(&root.join("kally.lock")) {
+        Ok(lock) => lock,
+        Err(error) => {
+            eprintln!("{}: {error}", root.join("kally.lock").display());
+            return ExitCode::FAILURE;
+        }
+    };
+    let mut names = std::collections::BTreeSet::new();
+    names.extend(manifest.packages.keys().cloned());
+    names.extend(lock.packages.keys().cloned());
+    if names.is_empty() {
+        println!("no Kally packages declared");
+        return ExitCode::SUCCESS;
+    }
+    let mut healthy = true;
+    for name in names {
+        let status = package_status(
+            &root,
+            &name,
+            manifest.packages.get(&name),
+            lock.packages.get(&name),
+        );
+        healthy &= status.healthy();
+        println!("{name}\t{}", status.label());
+    }
+    if healthy {
+        ExitCode::SUCCESS
+    } else {
+        eprintln!(
+            "run `kally sync` to materialize missing packages, or `kally update NAME` for declared changes"
+        );
+        ExitCode::FAILURE
+    }
+}
+
+fn package_status(
+    root: &Path,
+    name: &str,
+    requested: Option<&kally::ManifestPackage>,
+    locked: Option<&kally::Package>,
+) -> PackageStatus {
+    let (Some(requested), Some(locked)) = (requested, locked) else {
+        return if requested.is_some() {
+            PackageStatus::Unresolved
+        } else {
+            PackageStatus::Stale
+        };
+    };
+    match kally::resolution_action(requested, Some(locked)) {
+        Ok(kally::ResolutionAction::Diverged) | Err(_) => return PackageStatus::Diverged,
+        Ok(kally::ResolutionAction::Resolve) => return PackageStatus::Unresolved,
+        Ok(kally::ResolutionAction::Keep) => {}
+    }
+    let cached = root.join(".kally/packages").join(name);
+    if !cached.is_dir() {
+        return PackageStatus::Missing;
+    }
+    if locked.checksum.is_empty() {
+        return PackageStatus::ChecksumMismatch;
+    }
+    match kally::checksum_path(&cached) {
+        Ok(checksum) if checksum == locked.checksum => PackageStatus::Ready,
+        Ok(_) | Err(_) => PackageStatus::ChecksumMismatch,
     }
 }
 

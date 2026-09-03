@@ -8,10 +8,13 @@ The reusable libraries themselves live in
 [kalcite-packages](https://github.com/Kalcite-Engine/kalcite-packages), not in
 this repository.
 
+For a profile-based installation of Kalcite and Kally, use
+[Kallyup](https://github.com/Kalcite-Engine/kallyup).
+
 ## Install
 
 ```sh
-cargo install --git https://github.com/Kalcite-Engine/kally.git --branch manager-core
+cargo install --git https://github.com/Kalcite-Engine/kally.git
 ```
 
 ## Use
@@ -25,6 +28,8 @@ kally sync
 
 `kally update tween` is the only command that advances a locked Git package.
 `kally sync` materializes the exact locked source under `.kally/packages/`.
+`kally status` is read-only: it audits the manifest, lockfile, and local cache,
+returning a non-zero status when `sync` or an explicit `update` is required.
 
 ## Design
 
