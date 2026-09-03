@@ -8,6 +8,9 @@ The reusable libraries themselves live in
 [kalcite-packages](https://github.com/Kalcite-Engine/kalcite-packages), not in
 this repository.
 
+For a profile-based installation of Kalcite and Kally, use
+[Kallyup](https://github.com/Kalcite-Engine/kallyup).
+
 ## Install
 
 ```sh
