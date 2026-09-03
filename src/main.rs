@@ -6,7 +6,7 @@ use std::{
 
 fn usage() {
     eprintln!(
-        "usage:\n  kally add NAME git:URL[#SUBDIR] [BRANCH_OR_TAG] [DIR]\n  kally update [NAME] [DIR]\n  kally sync [DIR]\n  kally status [DIR]\n  kally remove NAME [DIR]\n  kally lock [DIR]\n\nKally manages Git packages for Kalcite projects. add resolves a branch or tag\nto an immutable commit in kally.lock; update is the only command that\nadvances a locked Git dependency. status is read-only and audits the local cache."
+        "usage:\n  kally add NAME git:URL[#SUBDIR] [BRANCH_OR_TAG] [DIR]\n  kally update [NAME] [DIR]\n  kally sync [--locked] [DIR]\n  kally status [DIR]\n  kally remove NAME [DIR]\n  kally lock [DIR]\n\nKally manages Git packages for Kalcite projects. add resolves a branch or tag\nto an immutable commit in kally.lock; update is the only command that\nadvances a locked Git dependency. `sync --locked` never resolves or rewrites\nthe lockfile; status is read-only and audits the local cache."
     );
 }
 
@@ -255,18 +255,16 @@ fn kally_add_command(args: &[String]) -> ExitCode {
         },
     );
     match kally::save(&path, &lock) {
-        Ok(()) => {
-            match sync_kally_packages(&root).and_then(|_| lock_kally_checksums(&root, Some(name))) {
-                Ok(()) => {
-                    println!("added and locked package `{name}` at its resolved revision");
-                    ExitCode::SUCCESS
-                }
-                Err(error) => {
-                    eprintln!("package `{name}` was added but could not be synced: {error}");
-                    ExitCode::FAILURE
-                }
+        Ok(()) => match sync_kally_packages(&root, false) {
+            Ok(_) => {
+                println!("added and locked package `{name}` at its resolved revision");
+                ExitCode::SUCCESS
             }
-        }
+            Err(error) => {
+                eprintln!("package `{name}` was added but could not be synced: {error}");
+                ExitCode::FAILURE
+            }
+        },
         Err(e) => {
             eprintln!("{e}");
             ExitCode::FAILURE
@@ -340,16 +338,18 @@ fn kally_update_command(args: &[String]) -> ExitCode {
             }
         }
     }
-    if wanted.is_some() && updated == 0 {
-        eprintln!("no Git package named `{}`", wanted.unwrap());
+    if updated == 0
+        && let Some(wanted) = wanted
+    {
+        eprintln!("no Git package named `{wanted}`");
         return ExitCode::FAILURE;
     }
     if let Err(error) = kally::save(&path, &lock) {
         eprintln!("{}: {error}", path.display());
         return ExitCode::FAILURE;
     }
-    match sync_kally_packages(&root).and_then(|_| lock_kally_checksums(&root, wanted)) {
-        Ok(()) => {
+    match sync_kally_packages(&root, false) {
+        Ok(_) => {
             println!("updated {updated} Git package(s)");
             ExitCode::SUCCESS
         }
@@ -405,11 +405,17 @@ fn kally_remove_command(args: &[String]) -> ExitCode {
     }
 }
 fn kally_sync_command(args: &[String]) -> ExitCode {
-    let root = args
-        .first()
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("."));
-    match sync_kally_packages(&root) {
+    let (locked, root) = match args {
+        [] => (false, PathBuf::from(".")),
+        [flag] if flag == "--locked" => (true, PathBuf::from(".")),
+        [root] => (false, PathBuf::from(root)),
+        [flag, root] if flag == "--locked" => (true, PathBuf::from(root)),
+        _ => {
+            eprintln!("usage: kally sync [--locked] [DIR]");
+            return ExitCode::FAILURE;
+        }
+    };
+    match sync_kally_packages(&root, locked) {
         Ok(count) => {
             println!("synced {count} packages");
             ExitCode::SUCCESS
@@ -421,8 +427,12 @@ fn kally_sync_command(args: &[String]) -> ExitCode {
     }
 }
 
-fn sync_kally_packages(root: &Path) -> Result<usize, String> {
-    let lock = reconcile_kally_manifest(root)?;
+fn sync_kally_packages(root: &Path, locked: bool) -> Result<usize, String> {
+    let lock = if locked {
+        locked_kally_manifest(root)?
+    } else {
+        reconcile_kally_manifest(root)?
+    };
     let cache = root.join(".kally/packages");
     fs::create_dir_all(&cache).map_err(|error| error.to_string())?;
     if let Err(error) = kally::verify(&lock, &cache) {
@@ -432,6 +442,11 @@ fn sync_kally_packages(root: &Path) -> Result<usize, String> {
         }
     }
     for (name, p) in &lock.packages {
+        if locked && p.checksum.is_empty() {
+            return Err(format!(
+                "package `{name}` is missing its locked checksum; run `kally sync` once"
+            ));
+        }
         match kally::source_kind(&p.source).map_err(|error| format!("package `{name}`: {error}"))? {
             kally::SourceKind::Path => {
                 let local = kally::source_payload(&p.source)?;
@@ -459,8 +474,40 @@ fn sync_kally_packages(root: &Path) -> Result<usize, String> {
     // Materialization is the only point at which a source-tree checksum is
     // meaningful. Persist it before returning so a fresh-manifest sync creates
     // a fully reproducible lock in one command.
-    lock_kally_checksums(root, None)?;
+    if !locked {
+        lock_kally_checksums(root, None)?;
+    }
     Ok(lock.packages.len())
+}
+
+/// Load a reproducible dependency set without permitting a manifest
+/// reconciliation. CI can therefore run this path without a branch resolution
+/// ever rewriting its lockfile.
+fn locked_kally_manifest(root: &Path) -> Result<kally::Lock, String> {
+    let lock_path = root.join("kally.lock");
+    let lock = kally::load(&lock_path)?;
+    let manifest_path = root.join("kally.toml");
+    if !manifest_path.exists() {
+        return Ok(lock);
+    }
+    let manifest = kally::load_manifest(&manifest_path)?;
+    for (name, requested) in &manifest.packages {
+        if kally::resolution_action(requested, lock.packages.get(name))?
+            != kally::ResolutionAction::Keep
+        {
+            return Err(format!(
+                "package `{name}` is not exactly locked; run `kally sync` or `kally update {name}`"
+            ));
+        }
+    }
+    for name in lock.packages.keys() {
+        if !manifest.packages.contains_key(name) {
+            return Err(format!(
+                "package `{name}` is only present in kally.lock; run `kally sync` to reconcile it"
+            ));
+        }
+    }
+    Ok(lock)
 }
 
 /// Reconcile declarative intent before materialization.  The KLC core decides
@@ -627,4 +674,82 @@ fn materialize_kally_git_package(
     })();
     let _ = fs::remove_dir_all(stage);
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_root(label: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("kally-main-{label}-{}", std::process::id()))
+    }
+
+    #[test]
+    fn locked_sync_rejects_manifest_divergence_without_rewriting_the_lock() {
+        let root = test_root("locked-divergence");
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let mut manifest = kally::Manifest::default();
+        manifest.packages.insert(
+            "demo".into(),
+            kally::ManifestPackage {
+                source: "path:changed".into(),
+                reference: "local".into(),
+            },
+        );
+        let mut lock = kally::Lock::default();
+        lock.packages.insert(
+            "demo".into(),
+            kally::Package {
+                source: "path:original".into(),
+                reference: "local".into(),
+                revision: "local".into(),
+                checksum: "0123456789abcdef".into(),
+            },
+        );
+        kally::save_manifest(&root.join("kally.toml"), &manifest).unwrap();
+        kally::save(&root.join("kally.lock"), &lock).unwrap();
+        let before = fs::read_to_string(root.join("kally.lock")).unwrap();
+
+        let error = sync_kally_packages(&root, true).unwrap_err();
+
+        assert!(error.contains("not exactly locked"));
+        assert_eq!(fs::read_to_string(root.join("kally.lock")).unwrap(), before);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn locked_sync_requires_a_checksum_before_materializing() {
+        let root = test_root("locked-checksum");
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("demo")).unwrap();
+        fs::write(root.join("demo/package.klc"), "class Package {}\n").unwrap();
+        let mut manifest = kally::Manifest::default();
+        manifest.packages.insert(
+            "demo".into(),
+            kally::ManifestPackage {
+                source: "path:demo".into(),
+                reference: "local".into(),
+            },
+        );
+        let mut lock = kally::Lock::default();
+        lock.packages.insert(
+            "demo".into(),
+            kally::Package {
+                source: "path:demo".into(),
+                reference: "local".into(),
+                revision: "local".into(),
+                checksum: String::new(),
+            },
+        );
+        kally::save_manifest(&root.join("kally.toml"), &manifest).unwrap();
+        kally::save(&root.join("kally.lock"), &lock).unwrap();
+        let before = fs::read_to_string(root.join("kally.lock")).unwrap();
+
+        let error = sync_kally_packages(&root, true).unwrap_err();
+
+        assert!(error.contains("missing its locked checksum"));
+        assert_eq!(fs::read_to_string(root.join("kally.lock")).unwrap(), before);
+        fs::remove_dir_all(root).unwrap();
+    }
 }
