@@ -1,35 +1,36 @@
-# Kally
+# Kalcite Packages
 
-Kally is the Git-first package manager for Kalcite. It keeps requested
-dependencies in `kally.toml`, resolves Git branches or tags once, and records
-the immutable commit and a deterministic source checksum in `kally.lock`.
-
-The reusable libraries themselves live in
-[kalcite-packages](https://github.com/Kalcite-Engine/kalcite-packages), not in
-this repository.
-
-## Install
-
-```sh
-cargo install --git https://github.com/Kalcite-Engine/kally.git --branch manager-core
-```
-
-## Use
+Official Git package monorepo for Kalcite projects. Each directory under
+[`packages/`](packages) is independently consumable through Kally; the package
+name is its directory name.
 
 ```sh
 kally add tween \
   git:https://github.com/Kalcite-Engine/kalcite-packages.git#packages/tween \
   main
-kally sync
 ```
 
-`kally update tween` is the only command that advances a locked Git package.
-`kally sync` materializes the exact locked source under `.kally/packages/`.
+Kally locks the selected Git reference to an immutable commit in the consuming
+project's `kally.lock`. Consumers therefore build from the locked commit;
+only `kally update` moves a dependency forward.
 
-## Design
+## Repository layout
 
-Kally performs filesystem access, TLS and Git subprocess execution in Rust.
-Lockfile grammar, source policy, resolution decisions and checksum transitions
-are compiled from `src/kally_core.klc` and executed by Kally itself.
+```text
+packages/
+  <package>/
+    README.md       Package purpose, API and compatibility notes
+    scripts/        Kalcite `.klc` source files
+```
+
+Packages must remain independent: no package may depend on unpublished local
+state or on another package's source by relative path. Use one Git commit and
+tag the repository for coordinated compatible releases.
+
+## Status
+
+`tween` is the first optional KLC package. Core language/runtime facilities
+remain in the main Kalcite repository; this repository is for reusable,
+non-primary libraries that can evolve independently.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).

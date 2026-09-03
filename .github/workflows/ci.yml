@@ -1,4 +1,4 @@
-name: Kally CI
+name: Package CI
 
 on:
   pull_request:
@@ -9,10 +9,16 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: Kalcite-Engine/kalcite
+          path: kalcite
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo fmt --check
-      - run: cargo test --all-targets
+      - name: Validate package layout
+        env:
+          KALCITE_CLI_MANIFEST: kalcite/Cargo.toml
+        run: ./scripts/check-packages.sh
