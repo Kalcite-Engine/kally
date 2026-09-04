@@ -5,7 +5,7 @@ version = 4
 [[package]]
 name = "kalcite-backend-rust"
 version = "0.14.0"
-source = "git+https://github.com/Kalcite-Engine/kalcite.git?rev=ebac908abbec9a1a7b0faa250c4f1ee3a294defd#ebac908abbec9a1a7b0faa250c4f1ee3a294defd"
+source = "git+https://github.com/Kalcite-Engine/kalcite.git?rev=9938474f312239f3d6f55ce599bc508580a20df6#9938474f312239f3d6f55ce599bc508580a20df6"
 dependencies = [
  "kalcite-hir",
  "kalcite-mir",
@@ -14,7 +14,7 @@ dependencies = [
 [[package]]
 name = "kalcite-hir"
 version = "0.14.0"
-source = "git+https://github.com/Kalcite-Engine/kalcite.git?rev=ebac908abbec9a1a7b0faa250c4f1ee3a294defd#ebac908abbec9a1a7b0faa250c4f1ee3a294defd"
+source = "git+https://github.com/Kalcite-Engine/kalcite.git?rev=9938474f312239f3d6f55ce599bc508580a20df6#9938474f312239f3d6f55ce599bc508580a20df6"
 dependencies = [
  "kalcite-syntax",
 ]
@@ -22,7 +22,7 @@ dependencies = [
 [[package]]
 name = "kalcite-mir"
 version = "0.14.0"
-source = "git+https://github.com/Kalcite-Engine/kalcite.git?rev=ebac908abbec9a1a7b0faa250c4f1ee3a294defd#ebac908abbec9a1a7b0faa250c4f1ee3a294defd"
+source = "git+https://github.com/Kalcite-Engine/kalcite.git?rev=9938474f312239f3d6f55ce599bc508580a20df6#9938474f312239f3d6f55ce599bc508580a20df6"
 dependencies = [
  "kalcite-hir",
  "kalcite-syntax",
@@ -31,7 +31,7 @@ dependencies = [
 [[package]]
 name = "kalcite-syntax"
 version = "0.2.0"
-source = "git+https://github.com/Kalcite-Engine/kalcite.git?rev=ebac908abbec9a1a7b0faa250c4f1ee3a294defd#ebac908abbec9a1a7b0faa250c4f1ee3a294defd"
+source = "git+https://github.com/Kalcite-Engine/kalcite.git?rev=9938474f312239f3d6f55ce599bc508580a20df6#9938474f312239f3d6f55ce599bc508580a20df6"
 
 [[package]]
 name = "kally"

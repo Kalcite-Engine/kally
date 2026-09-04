@@ -31,6 +31,9 @@ kally sync
 For CI and reproducible builds, use `kally sync --locked`: it rejects any
 manifest/lock divergence or missing checksum and never resolves a Git reference
 or rewrites `kally.lock`.
+When an exact package cache is already available, `kally sync --locked --offline`
+performs the same manifest and checksum validation without creating files,
+contacting Git, or resolving a reference.
 `kally status` is read-only: it audits the manifest, lockfile, and local cache,
 returning a non-zero status when `sync` or an explicit `update` is required.
 

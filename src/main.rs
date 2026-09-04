@@ -6,7 +6,7 @@ use std::{
 
 fn usage() {
     eprintln!(
-        "usage:\n  kally add NAME git:URL[#SUBDIR] [BRANCH_OR_TAG] [DIR]\n  kally update [NAME] [DIR]\n  kally sync [--locked] [DIR]\n  kally status [DIR]\n  kally remove NAME [DIR]\n  kally lock [DIR]\n\nKally manages Git packages for Kalcite projects. add resolves a branch or tag\nto an immutable commit in kally.lock; update is the only command that\nadvances a locked Git dependency. `sync --locked` never resolves or rewrites\nthe lockfile; status is read-only and audits the local cache."
+        "usage:\n  kally add NAME git:URL[#SUBDIR] [BRANCH_OR_TAG] [DIR]\n  kally update [NAME] [DIR]\n  kally sync [--locked] [--offline] [DIR]\n  kally status [DIR]\n  kally remove NAME [DIR]\n  kally lock [DIR]\n\nKally manages Git packages for Kalcite projects. add resolves a branch or tag\nto an immutable commit in kally.lock; update is the only command that\nadvances a locked Git dependency. `sync --locked` never resolves or rewrites\nthe lockfile; `sync --locked --offline` verifies the exact cached package set\nwithout filesystem or network changes; status is read-only and audits the local cache."
     );
 }
 
@@ -255,7 +255,7 @@ fn kally_add_command(args: &[String]) -> ExitCode {
         },
     );
     match kally::save(&path, &lock) {
-        Ok(()) => match sync_kally_packages(&root, false) {
+        Ok(()) => match sync_kally_packages(&root, false, false) {
             Ok(_) => {
                 println!("added and locked package `{name}` at its resolved revision");
                 ExitCode::SUCCESS
@@ -348,7 +348,7 @@ fn kally_update_command(args: &[String]) -> ExitCode {
         eprintln!("{}: {error}", path.display());
         return ExitCode::FAILURE;
     }
-    match sync_kally_packages(&root, false) {
+    match sync_kally_packages(&root, false, false) {
         Ok(_) => {
             println!("updated {updated} Git package(s)");
             ExitCode::SUCCESS
@@ -405,17 +405,26 @@ fn kally_remove_command(args: &[String]) -> ExitCode {
     }
 }
 fn kally_sync_command(args: &[String]) -> ExitCode {
-    let (locked, root) = match args {
-        [] => (false, PathBuf::from(".")),
-        [flag] if flag == "--locked" => (true, PathBuf::from(".")),
-        [root] => (false, PathBuf::from(root)),
-        [flag, root] if flag == "--locked" => (true, PathBuf::from(root)),
-        _ => {
-            eprintln!("usage: kally sync [--locked] [DIR]");
-            return ExitCode::FAILURE;
+    let mut locked = false;
+    let mut offline = false;
+    let mut root = None;
+    for arg in args {
+        match arg.as_str() {
+            "--locked" => locked = true,
+            "--offline" => offline = true,
+            _ if root.is_none() => root = Some(PathBuf::from(arg)),
+            _ => {
+                eprintln!("usage: kally sync [--locked] [--offline] [DIR]");
+                return ExitCode::FAILURE;
+            }
         }
-    };
-    match sync_kally_packages(&root, locked) {
+    }
+    if offline && !locked {
+        eprintln!("`kally sync --offline` requires --locked");
+        return ExitCode::FAILURE;
+    }
+    let root = root.unwrap_or_else(|| PathBuf::from("."));
+    match sync_kally_packages(&root, locked, offline) {
         Ok(count) => {
             println!("synced {count} packages");
             ExitCode::SUCCESS
@@ -427,13 +436,34 @@ fn kally_sync_command(args: &[String]) -> ExitCode {
     }
 }
 
-fn sync_kally_packages(root: &Path, locked: bool) -> Result<usize, String> {
+fn sync_kally_packages(root: &Path, locked: bool, offline: bool) -> Result<usize, String> {
     let lock = if locked {
         locked_kally_manifest(root)?
     } else {
         reconcile_kally_manifest(root)?
     };
     let cache = root.join(".kally/packages");
+    if offline {
+        for (name, package) in &lock.packages {
+            if package.checksum.is_empty() {
+                return Err(format!(
+                    "package `{name}` is missing its locked checksum; offline sync requires a complete lockfile"
+                ));
+            }
+            let path = cache.join(name);
+            if !path.is_dir() {
+                return Err(format!(
+                    "package `{name}` is not present in the local cache; run `kally sync --locked` while online"
+                ));
+            }
+            let checksum = kally::checksum_path(&path)
+                .map_err(|error| format!("package `{name}`: {error}"))?;
+            if checksum != package.checksum {
+                return Err(format!("package `{name}`: checksum mismatch"));
+            }
+        }
+        return Ok(lock.packages.len());
+    }
     fs::create_dir_all(&cache).map_err(|error| error.to_string())?;
     if let Err(error) = kally::verify(&lock, &cache) {
         // A missing cache is expected before sync; structural lock errors are not.
@@ -711,7 +741,7 @@ mod tests {
         kally::save(&root.join("kally.lock"), &lock).unwrap();
         let before = fs::read_to_string(root.join("kally.lock")).unwrap();
 
-        let error = sync_kally_packages(&root, true).unwrap_err();
+        let error = sync_kally_packages(&root, true, false).unwrap_err();
 
         assert!(error.contains("not exactly locked"));
         assert_eq!(fs::read_to_string(root.join("kally.lock")).unwrap(), before);
@@ -746,10 +776,46 @@ mod tests {
         kally::save(&root.join("kally.lock"), &lock).unwrap();
         let before = fs::read_to_string(root.join("kally.lock")).unwrap();
 
-        let error = sync_kally_packages(&root, true).unwrap_err();
+        let error = sync_kally_packages(&root, true, false).unwrap_err();
 
         assert!(error.contains("missing its locked checksum"));
         assert_eq!(fs::read_to_string(root.join("kally.lock")).unwrap(), before);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn offline_locked_sync_requires_an_exact_cached_package() {
+        let root = test_root("offline-cache");
+        let _ = fs::remove_dir_all(&root);
+        let cache = root.join(".kally/packages/demo");
+        fs::create_dir_all(&cache).unwrap();
+        fs::write(cache.join("package.klc"), "class Package {}\n").unwrap();
+        let checksum = kally::checksum_path(&cache).unwrap();
+        let mut manifest = kally::Manifest::default();
+        manifest.packages.insert(
+            "demo".into(),
+            kally::ManifestPackage {
+                source: "path:demo".into(),
+                reference: "local".into(),
+            },
+        );
+        let mut lock = kally::Lock::default();
+        lock.packages.insert(
+            "demo".into(),
+            kally::Package {
+                source: "path:demo".into(),
+                reference: "local".into(),
+                revision: "local".into(),
+                checksum,
+            },
+        );
+        kally::save_manifest(&root.join("kally.toml"), &manifest).unwrap();
+        kally::save(&root.join("kally.lock"), &lock).unwrap();
+
+        assert_eq!(sync_kally_packages(&root, true, true).unwrap(), 1);
+        fs::write(cache.join("package.klc"), "class Changed {}\n").unwrap();
+        let error = sync_kally_packages(&root, true, true).unwrap_err();
+        assert!(error.contains("checksum mismatch"));
         fs::remove_dir_all(root).unwrap();
     }
 }
