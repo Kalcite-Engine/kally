@@ -10,7 +10,7 @@ keywords = ["kalcite", "package-manager", "git"]
 categories = ["command-line-utilities", "development-tools"]
 
 [build-dependencies]
-kalcite-syntax = { git = "https://github.com/Kalcite-Engine/kalcite.git", rev = "ebac908abbec9a1a7b0faa250c4f1ee3a294defd" }
-kalcite-hir = { git = "https://github.com/Kalcite-Engine/kalcite.git", rev = "ebac908abbec9a1a7b0faa250c4f1ee3a294defd" }
-kalcite-mir = { git = "https://github.com/Kalcite-Engine/kalcite.git", rev = "ebac908abbec9a1a7b0faa250c4f1ee3a294defd" }
-kalcite-backend-rust = { git = "https://github.com/Kalcite-Engine/kalcite.git", rev = "ebac908abbec9a1a7b0faa250c4f1ee3a294defd" }
+kalcite-syntax = { git = "https://github.com/Kalcite-Engine/kalcite.git", rev = "9938474f312239f3d6f55ce599bc508580a20df6" }
+kalcite-hir = { git = "https://github.com/Kalcite-Engine/kalcite.git", rev = "9938474f312239f3d6f55ce599bc508580a20df6" }
+kalcite-mir = { git = "https://github.com/Kalcite-Engine/kalcite.git", rev = "9938474f312239f3d6f55ce599bc508580a20df6" }
+kalcite-backend-rust = { git = "https://github.com/Kalcite-Engine/kalcite.git", rev = "9938474f312239f3d6f55ce599bc508580a20df6" }
