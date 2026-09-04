@@ -6,7 +6,7 @@ use std::{
 
 fn usage() {
     eprintln!(
-        "usage:\n  kally add NAME git:URL[#SUBDIR] [BRANCH_OR_TAG] [DIR]\n  kally update [NAME] [DIR]\n  kally sync [--locked] [--offline] [DIR]\n  kally status [DIR]\n  kally remove NAME [DIR]\n  kally lock [DIR]\n\nKally manages Git packages for Kalcite projects. add resolves a branch or tag\nto an immutable commit in kally.lock; update is the only command that\nadvances a locked Git dependency. `sync --locked` never resolves or rewrites\nthe lockfile; `sync --locked --offline` verifies the exact cached package set\nwithout filesystem or network changes; status is read-only and audits the local cache."
+        "usage:\n  kally add NAME git:URL[#SUBDIR] [BRANCH_OR_TAG] [DIR]\n  kally update [NAME] [DIR]\n  kally sync [--locked] [--offline] [DIR]\n  kally status [DIR]\n  kally clean [--dry-run] [DIR]\n  kally remove NAME [DIR]\n  kally lock [DIR]\n\nKally manages Git packages for Kalcite projects. add resolves a branch or tag\nto an immutable commit in kally.lock; update is the only command that\nadvances a locked Git dependency. `sync --locked` never resolves or rewrites\nthe lockfile; `sync --locked --offline` verifies the exact cached package set\nwithout filesystem or network changes; status is read-only and audits the local cache. `clean` removes only stale package cache entries; use `--dry-run` to inspect them first."
     );
 }
 
@@ -21,6 +21,7 @@ fn main() -> ExitCode {
         "update" => kally_update_command(&args[2..]),
         "sync" => kally_sync_command(&args[2..]),
         "status" => kally_status_command(&args[2..]),
+        "clean" => kally_clean_command(&args[2..]),
         "remove" => kally_remove_command(&args[2..]),
         "lock" => kally_lock_command(&args[2..]),
         "help" | "--help" | "-h" => {
@@ -111,6 +112,85 @@ fn kally_status_command(args: &[String]) -> ExitCode {
         );
         ExitCode::FAILURE
     }
+}
+
+fn kally_clean_command(args: &[String]) -> ExitCode {
+    let mut dry_run = false;
+    let mut root = None;
+    for argument in args {
+        match argument.as_str() {
+            "--dry-run" => dry_run = true,
+            _ if root.is_none() => root = Some(PathBuf::from(argument)),
+            _ => {
+                eprintln!("usage: kally clean [--dry-run] [DIR]");
+                return ExitCode::FAILURE;
+            }
+        }
+    }
+    let root = root.unwrap_or_else(|| PathBuf::from("."));
+    match clean_kally_packages(&root, dry_run) {
+        Ok(0) => {
+            println!("package cache is already clean");
+            ExitCode::SUCCESS
+        }
+        Ok(count) if dry_run => {
+            println!(
+                "would remove {count} stale package cache entr{}",
+                if count == 1 { "y" } else { "ies" }
+            );
+            ExitCode::SUCCESS
+        }
+        Ok(count) => {
+            println!(
+                "removed {count} stale package cache entr{}",
+                if count == 1 { "y" } else { "ies" }
+            );
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("{error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn clean_kally_packages(root: &Path, dry_run: bool) -> Result<usize, String> {
+    let lock_path = root.join("kally.lock");
+    let lock =
+        kally::load(&lock_path).map_err(|error| format!("{}: {error}", lock_path.display()))?;
+    let cache = root.join(".kally/packages");
+    if !cache.exists() {
+        return Ok(0);
+    }
+    let entries = fs::read_dir(&cache)
+        .map_err(|error| format!("{}: {error}", cache.display()))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    let mut removed = 0;
+    for entry in entries {
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else {
+            continue;
+        };
+        if !kally::valid_name(name) || lock.packages.contains_key(name) {
+            continue;
+        }
+        println!("{}\tstale", name);
+        if !dry_run {
+            let path = entry.path();
+            if entry
+                .file_type()
+                .map_err(|error| error.to_string())?
+                .is_dir()
+            {
+                fs::remove_dir_all(&path).map_err(|error| error.to_string())?;
+            } else {
+                fs::remove_file(&path).map_err(|error| error.to_string())?;
+            }
+        }
+        removed += 1;
+    }
+    Ok(removed)
 }
 
 fn package_status(
@@ -823,6 +903,35 @@ mod tests {
         fs::write(cache.join("package.klc"), "class Changed {}\n").unwrap();
         let error = sync_kally_packages(&root, true, true).unwrap_err();
         assert!(error.contains("checksum mismatch"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn clean_only_removes_stale_named_cache_entries() {
+        let root = test_root("clean-cache");
+        let _ = fs::remove_dir_all(&root);
+        let cache = root.join(".kally/packages");
+        fs::create_dir_all(cache.join("keep")).unwrap();
+        fs::create_dir_all(cache.join("stale")).unwrap();
+        fs::create_dir_all(cache.join(".keep-stage")).unwrap();
+        let mut lock = kally::Lock::default();
+        lock.packages.insert(
+            "keep".into(),
+            kally::Package {
+                source: "path:keep".into(),
+                reference: "local".into(),
+                revision: "local".into(),
+                checksum: "0123456789abcdef".into(),
+            },
+        );
+        kally::save(&root.join("kally.lock"), &lock).unwrap();
+
+        assert_eq!(clean_kally_packages(&root, true).unwrap(), 1);
+        assert!(cache.join("stale").is_dir());
+        assert_eq!(clean_kally_packages(&root, false).unwrap(), 1);
+        assert!(cache.join("keep").is_dir());
+        assert!(!cache.join("stale").exists());
+        assert!(cache.join(".keep-stage").is_dir());
         fs::remove_dir_all(root).unwrap();
     }
 }

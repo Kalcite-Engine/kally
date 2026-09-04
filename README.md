@@ -37,6 +37,10 @@ contacting Git, or resolving a reference.
 `kally status` is read-only: it audits the manifest, lockfile, and local cache,
 returning a non-zero status when `sync` or an explicit `update` is required.
 
+`kally clean --dry-run` lists stale named entries in `.kally/packages/` without
+changing anything. `kally clean` removes only those entries that are absent
+from `kally.lock`; it never removes a locked package.
+
 ## Design
 
 Kally performs filesystem access, TLS and Git subprocess execution in Rust.
