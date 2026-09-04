@@ -444,6 +444,7 @@ fn sync_kally_packages(root: &Path, locked: bool, offline: bool) -> Result<usize
     };
     let cache = root.join(".kally/packages");
     if offline {
+        kally::verify(&lock, &cache).map_err(|error| format!("lockfile: {error}"))?;
         for (name, package) in &lock.packages {
             if package.checksum.is_empty() {
                 return Err(format!(
@@ -813,6 +814,12 @@ mod tests {
         kally::save(&root.join("kally.lock"), &lock).unwrap();
 
         assert_eq!(sync_kally_packages(&root, true, true).unwrap(), 1);
+        lock.packages.get_mut("demo").unwrap().revision = "branch".into();
+        kally::save(&root.join("kally.lock"), &lock).unwrap();
+        let error = sync_kally_packages(&root, true, true).unwrap_err();
+        assert!(error.contains("local revision marker"));
+        lock.packages.get_mut("demo").unwrap().revision = "local".into();
+        kally::save(&root.join("kally.lock"), &lock).unwrap();
         fs::write(cache.join("package.klc"), "class Changed {}\n").unwrap();
         let error = sync_kally_packages(&root, true, true).unwrap_err();
         assert!(error.contains("checksum mismatch"));
