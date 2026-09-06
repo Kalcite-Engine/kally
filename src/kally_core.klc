@@ -19,8 +19,8 @@ public bool kally_valid_name(String[65] name) {
 // policy, so it lives in KLC; Rust only performs the selected I/O.
 public u32 kally_source_kind(String[512] source) {
     u32 length = Text.length(source);
-    if length > 4 && Text.byte_at(source, 0) == 103 && Text.byte_at(source, 1) == 105 && Text.byte_at(source, 2) == 116 && Text.byte_at(source, 3) == 58 { return 1; }
-    if length > 5 && Text.byte_at(source, 0) == 112 && Text.byte_at(source, 1) == 97 && Text.byte_at(source, 2) == 116 && Text.byte_at(source, 3) == 104 && Text.byte_at(source, 4) == 58 { return 2; }
+    if length > 4 && Text.starts_with(source, "git:") { return 1; }
+    if length > 5 && Text.starts_with(source, "path:") { return 2; }
     return 0;
 }
 
