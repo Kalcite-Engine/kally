@@ -4,9 +4,9 @@ Kally is the Git-first package manager for Kalcite. It keeps requested
 dependencies in `kally.toml`, resolves Git branches or tags once, and records
 the immutable commit and a deterministic source checksum in `kally.lock`.
 
-The reusable libraries themselves live in
-[kalcite-packages](https://github.com/Kalcite-Engine/kalcite-packages), not in
-this repository.
+The reusable libraries themselves live in the separate
+[kalcite-pkgs](https://github.com/Kalcite-Engine/kalcite-pkgs) monorepo, not
+in this repository.
 
 For a profile-based installation of Kalcite and Kally, use
 [Kallyup](https://github.com/Kalcite-Engine/kallyup).
@@ -20,8 +20,8 @@ cargo install --git https://github.com/Kalcite-Engine/kally.git
 ## Use
 
 ```sh
-kally add tween \
-  git:https://github.com/Kalcite-Engine/kalcite-packages.git#packages/tween \
+kally add hash \
+  git:https://github.com/Kalcite-Engine/kalcite-pkgs.git#packages/hash \
   main
 kally sync
 ```
