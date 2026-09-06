@@ -51,5 +51,8 @@ sources and references, including bounded strings with different capacities and
 fixed text literals such as the local-source reference.
 Source classification likewise uses `Text.starts_with` for the `git:` and
 `path:` prefixes while preserving Kally's non-empty payload requirement.
+The lockfile key classifier uses the same KLC text operations for its exact
+`version=1` header and `source=`, `reference=`, `revision=`, and `checksum=`
+properties; Rust receives only the resulting validated line kind.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
