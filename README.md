@@ -45,6 +45,8 @@ from `kally.lock`; it never removes a locked package.
 
 Kally performs filesystem access, TLS and Git subprocess execution in Rust.
 Lockfile grammar, source policy, resolution decisions and checksum transitions
-are compiled from `src/kally_core.klc` and executed by Kally itself.
+are compiled from `src/kally_core.klc` and executed by Kally itself. The KLC
+core uses the allocation-free `Text.equals` intrinsic to compare locked Git
+sources and references, including bounded strings with different capacities.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).

@@ -80,25 +80,11 @@ public bool kally_reference_valid(String[256] reference) {
 }
 
 public bool kally_source_matches(String[512] left, String[512] right) {
-    u32 length = Text.length(left);
-    if length != Text.length(right) { return false; }
-    u32 index = 0;
-    while index < length {
-        if Text.byte_at(left, index) != Text.byte_at(right, index) { return false; }
-        index += 1;
-    }
-    return true;
+    return Text.equals(left, right);
 }
 
 public bool kally_reference_matches(String[256] left, String[256] right) {
-    u32 length = Text.length(left);
-    if length != Text.length(right) { return false; }
-    u32 index = 0;
-    while index < length {
-        if Text.byte_at(left, index) != Text.byte_at(right, index) { return false; }
-        index += 1;
-    }
-    return true;
+    return Text.equals(left, right);
 }
 
 // 0=keep an exact lock, 1=perform the first resolution, 2=manifest/lock
