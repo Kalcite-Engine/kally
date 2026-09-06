@@ -47,6 +47,7 @@ Kally performs filesystem access, TLS and Git subprocess execution in Rust.
 Lockfile grammar, source policy, resolution decisions and checksum transitions
 are compiled from `src/kally_core.klc` and executed by Kally itself. The KLC
 core uses the allocation-free `Text.equals` intrinsic to compare locked Git
-sources and references, including bounded strings with different capacities.
+sources and references, including bounded strings with different capacities and
+fixed text literals such as the local-source reference.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
