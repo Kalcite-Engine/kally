@@ -60,6 +60,14 @@ mod klc_runtime {
         pub fn byte_at_u32<const N: usize>(value: BoundedString<N>, index: u32) -> u32 {
             value.byte_at(index) as u32
         }
+        #[inline]
+        pub fn equals<const L: usize, const R: usize>(
+            left: BoundedString<L>,
+            right: BoundedString<R>,
+        ) -> bool {
+            left.len == right.len
+                && left.bytes[..left.len as usize] == right.bytes[..right.len as usize]
+        }
     }
 }
 
