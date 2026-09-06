@@ -68,6 +68,14 @@ mod klc_runtime {
             left.len == right.len
                 && left.bytes[..left.len as usize] == right.bytes[..right.len as usize]
         }
+        #[inline]
+        pub fn starts_with<const L: usize, const R: usize>(
+            value: BoundedString<L>,
+            prefix: BoundedString<R>,
+        ) -> bool {
+            let length = prefix.len as usize;
+            value.len >= prefix.len && value.bytes[..length] == prefix.bytes[..length]
+        }
     }
 }
 
