@@ -20,11 +20,16 @@ cargo install --git https://github.com/Kalcite-Engine/kally.git
 ## Use
 
 ```sh
+kally init
 kally add hash \
   git:https://github.com/Kalcite-Engine/kalcite-pkgs.git#packages/hash \
   main
 kally sync
 ```
+
+`kally init [DIR]` creates an empty `kally.toml` and refuses to overwrite one
+that already exists. It can create the requested project directory, but does
+not create a lockfile or contact Git until the first dependency is added.
 
 `kally update tween` is the only command that advances a locked Git package.
 `kally sync` materializes the exact locked source under `.kally/packages/`.
