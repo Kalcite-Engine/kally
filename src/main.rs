@@ -6,7 +6,7 @@ use std::{
 
 fn usage() {
     eprintln!(
-        "usage:\n  kally add NAME git:URL[#SUBDIR] [BRANCH_OR_TAG] [DIR]\n  kally update [NAME] [DIR]\n  kally sync [--locked] [--offline] [DIR]\n  kally status [--json] [DIR]\n  kally clean [--dry-run] [DIR]\n  kally remove NAME [DIR]\n  kally lock [DIR]\n\nKally manages Git packages for Kalcite projects. add resolves a branch or tag\nto an immutable commit in kally.lock; update is the only command that\nadvances a locked Git dependency. `sync --locked` never resolves or rewrites\nthe lockfile; `sync --locked --offline` verifies the exact cached package set\nwithout filesystem or network changes; status is read-only and audits the local cache. `status --json` is a stable machine-readable report for CI and editor integrations. `clean` removes only stale package cache entries; use `--dry-run` to inspect them first."
+        "usage:\n  kally init [DIR]\n  kally add NAME git:URL[#SUBDIR] [BRANCH_OR_TAG] [DIR]\n  kally update [NAME] [DIR]\n  kally sync [--locked] [--offline] [DIR]\n  kally status [--json] [DIR]\n  kally clean [--dry-run] [DIR]\n  kally remove NAME [DIR]\n  kally lock [DIR]\n\nKally manages Git packages for Kalcite projects. init creates a new, empty\nkally.toml without overwriting an existing manifest. add resolves a branch or\ntag to an immutable commit in kally.lock; update is the only command that\nadvances a locked Git dependency. `sync --locked` never resolves or rewrites\nthe lockfile; `sync --locked --offline` verifies the exact cached package set\nwithout filesystem or network changes; status is read-only and audits the local cache. `status --json` is a stable machine-readable report for CI and editor integrations. `clean` removes only stale package cache entries; use `--dry-run` to inspect them first."
     );
 }
 
@@ -17,6 +17,7 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE;
     };
     match command {
+        "init" => kally_init_command(&args[2..]),
         "add" => kally_add_command(&args[2..]),
         "update" => kally_update_command(&args[2..]),
         "sync" => kally_sync_command(&args[2..]),
@@ -34,6 +35,35 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+fn kally_init_command(args: &[String]) -> ExitCode {
+    let root = match args {
+        [] => PathBuf::from("."),
+        [directory] => PathBuf::from(directory),
+        _ => {
+            eprintln!("usage: kally init [DIR]");
+            return ExitCode::FAILURE;
+        }
+    };
+    if let Err(error) = fs::create_dir_all(&root) {
+        eprintln!("{}: {error}", root.display());
+        return ExitCode::FAILURE;
+    }
+    let manifest_path = root.join("kally.toml");
+    if manifest_path.exists() {
+        eprintln!(
+            "{} already exists; refusing to overwrite the Kally manifest",
+            manifest_path.display()
+        );
+        return ExitCode::FAILURE;
+    }
+    if let Err(error) = kally::save_manifest(&manifest_path, &kally::Manifest::default()) {
+        eprintln!("{}: {error}", manifest_path.display());
+        return ExitCode::FAILURE;
+    }
+    println!("initialized {}", manifest_path.display());
+    ExitCode::SUCCESS
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -823,6 +853,41 @@ mod tests {
 
     fn test_root(label: &str) -> PathBuf {
         std::env::temp_dir().join(format!("kally-main-{label}-{}", std::process::id()))
+    }
+
+    #[test]
+    fn init_writes_an_empty_manifest_without_a_lockfile() {
+        let root = test_root("init");
+        let _ = fs::remove_dir_all(&root);
+
+        assert_eq!(
+            kally_init_command(&[root.display().to_string()]),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(
+            fs::read_to_string(root.join("kally.toml")).unwrap(),
+            "# Kally manifest - requested dependencies\nversion=1\n"
+        );
+        assert!(!root.join("kally.lock").exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn init_refuses_to_overwrite_an_existing_manifest() {
+        let root = test_root("init-existing");
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("kally.toml"), "version=1\n").unwrap();
+
+        assert_eq!(
+            kally_init_command(&[root.display().to_string()]),
+            ExitCode::FAILURE
+        );
+        assert_eq!(
+            fs::read_to_string(root.join("kally.toml")).unwrap(),
+            "version=1\n"
+        );
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
