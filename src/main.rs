@@ -6,7 +6,7 @@ use std::{
 
 fn usage() {
     eprintln!(
-        "usage:\n  kally add NAME git:URL[#SUBDIR] [BRANCH_OR_TAG] [DIR]\n  kally update [NAME] [DIR]\n  kally sync [--locked] [--offline] [DIR]\n  kally status [DIR]\n  kally clean [--dry-run] [DIR]\n  kally remove NAME [DIR]\n  kally lock [DIR]\n\nKally manages Git packages for Kalcite projects. add resolves a branch or tag\nto an immutable commit in kally.lock; update is the only command that\nadvances a locked Git dependency. `sync --locked` never resolves or rewrites\nthe lockfile; `sync --locked --offline` verifies the exact cached package set\nwithout filesystem or network changes; status is read-only and audits the local cache. `clean` removes only stale package cache entries; use `--dry-run` to inspect them first."
+        "usage:\n  kally add NAME git:URL[#SUBDIR] [BRANCH_OR_TAG] [DIR]\n  kally update [NAME] [DIR]\n  kally sync [--locked] [--offline] [DIR]\n  kally status [--json] [DIR]\n  kally clean [--dry-run] [DIR]\n  kally remove NAME [DIR]\n  kally lock [DIR]\n\nKally manages Git packages for Kalcite projects. add resolves a branch or tag\nto an immutable commit in kally.lock; update is the only command that\nadvances a locked Git dependency. `sync --locked` never resolves or rewrites\nthe lockfile; `sync --locked --offline` verifies the exact cached package set\nwithout filesystem or network changes; status is read-only and audits the local cache. `status --json` is a stable machine-readable report for CI and editor integrations. `clean` removes only stale package cache entries; use `--dry-run` to inspect them first."
     );
 }
 
@@ -64,14 +64,19 @@ impl PackageStatus {
 }
 
 fn kally_status_command(args: &[String]) -> ExitCode {
-    let root = match args {
-        [] => PathBuf::from("."),
-        [root] => PathBuf::from(root),
-        _ => {
-            eprintln!("usage: kally status [DIR]");
-            return ExitCode::FAILURE;
+    let mut json = false;
+    let mut root = None;
+    for argument in args {
+        match argument.as_str() {
+            "--json" if !json => json = true,
+            _ if root.is_none() => root = Some(PathBuf::from(argument)),
+            _ => {
+                eprintln!("usage: kally status [--json] [DIR]");
+                return ExitCode::FAILURE;
+            }
         }
-    };
+    }
+    let root = root.unwrap_or_else(|| PathBuf::from("."));
     let manifest = match kally::load_manifest(&root.join("kally.toml")) {
         Ok(manifest) => manifest,
         Err(error) => {
@@ -89,11 +94,12 @@ fn kally_status_command(args: &[String]) -> ExitCode {
     let mut names = std::collections::BTreeSet::new();
     names.extend(manifest.packages.keys().cloned());
     names.extend(lock.packages.keys().cloned());
-    if names.is_empty() {
+    if names.is_empty() && !json {
         println!("no Kally packages declared");
         return ExitCode::SUCCESS;
     }
     let mut healthy = true;
+    let mut report = Vec::new();
     for name in names {
         let status = package_status(
             &root,
@@ -102,7 +108,14 @@ fn kally_status_command(args: &[String]) -> ExitCode {
             lock.packages.get(&name),
         );
         healthy &= status.healthy();
-        println!("{name}\t{}", status.label());
+        if json {
+            report.push((name, status));
+        } else {
+            println!("{name}\t{}", status.label());
+        }
+    }
+    if json {
+        println!("{}", status_json(&report, healthy));
     }
     if healthy {
         ExitCode::SUCCESS
@@ -112,6 +125,23 @@ fn kally_status_command(args: &[String]) -> ExitCode {
         );
         ExitCode::FAILURE
     }
+}
+
+fn status_json(report: &[(String, PackageStatus)], healthy: bool) -> String {
+    let mut out = format!("{{\"healthy\":{healthy},\"packages\":[");
+    for (index, (name, status)) in report.iter().enumerate() {
+        if index > 0 {
+            out.push(',');
+        }
+        // Kally package names are validated ASCII identifiers, and status
+        // labels are fixed literals, so neither requires JSON escaping.
+        out.push_str(&format!(
+            "{{\"name\":\"{name}\",\"status\":\"{}\"}}",
+            status.label()
+        ));
+    }
+    out.push_str("]}");
+    out
 }
 
 fn kally_clean_command(args: &[String]) -> ExitCode {
@@ -933,5 +963,18 @@ mod tests {
         assert!(!cache.join("stale").exists());
         assert!(cache.join(".keep-stage").is_dir());
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn status_json_is_stable_and_machine_readable() {
+        let report = vec![
+            ("core".to_string(), PackageStatus::Ready),
+            ("physics-2d".to_string(), PackageStatus::ChecksumMismatch),
+        ];
+        assert_eq!(
+            status_json(&report, false),
+            "{\"healthy\":false,\"packages\":[{\"name\":\"core\",\"status\":\"ready\"},{\"name\":\"physics-2d\",\"status\":\"checksum-mismatch\"}]}"
+        );
+        assert_eq!(status_json(&[], true), "{\"healthy\":true,\"packages\":[]}");
     }
 }
